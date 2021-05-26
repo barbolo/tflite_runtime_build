@@ -1,17 +1,32 @@
 # Build TensorFlow Lite Standalone Pip
 
+## Install precompiled tflite_runtime
+
+```bash
+# python 3.9 - x86_64 - tensorflow 2.5.0
+pip install https://raw.githubusercontent.com/barbolo/tflite_runtime_build/main/dist/tflite_runtime-2.5.0-cp39-cp39-macosx_11_0_x86_64.whl
+```
+
+## Instructions to build
+
+Use these instructions to build `tflite_runtime` with:
+
+- Custom Ops from MediaPipe (`MaxPoolingWithArgmax2D`, `MaxUnpooling2D` and `Convolution2DTransposeBias`);
+- TF OP support (Flex delegate);
+- `XNNPACK` with multi-thread support.
+
 > Based on:
 > - https://github.com/tensorflow/tensorflow/tree/v2.5.0/tensorflow/lite/tools/pip_package
 > - https://zenn.dev/pinto0309/articles/a0e40c2817f2ee
 > - https://github.com/PINTO0309/TensorflowLite-bin
 
-1. Define a workdir:
+### 1. Set a work directory:
 
 ```bash
 export MYWORKDIR=~/git/github
 ```
 
-2. Clone repos:
+### 2. Clone repos:
 
 ```bash
 cd $MYWORKDIR
@@ -33,14 +48,14 @@ cp $MYWORKDIR/tflite_runtime_build/tensorflow/lite/kernels/register_ref.cc $MYWO
 cp $MYWORKDIR/tflite_runtime_build/tensorflow/lite/kernels/BUILD $MYWORKDIR/tensorflow/tensorflow/lite/kernels
 ```
 
-3. Update build tools:
+### 3. Update build tools:
 
 ```bash
 cp $MYWORKDIR/tflite_runtime_build/tensorflow/tools/ci_build/Dockerfile.cpu $MYWORKDIR/tensorflow/tensorflow/tools/ci_build/
 cp $MYWORKDIR/tflite_runtime_build/tensorflow/tools/ci_build/install/install_deb_packages.sh $MYWORKDIR/tensorflow/tensorflow/tools/ci_build/install/
 ```
 
-4. XNNPACK's multi-thread patch
+### 4. XNNPACK's multi-thread patch
 
 > https://github.com/NobuoTsukamoto/tensorflow/commit/f6f106380ac86ccf61ea9b01395f2911c4a6403c
 
@@ -50,17 +65,21 @@ patch -p1 < $MYWORKDIR/tflite_runtime_build/xnnpack_multi_threads.patch
 cp $MYWORKDIR/tflite_runtime_build/tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh $MYWORKDIR/tensorflow/tensorflow/lite/tools/pip_package/
 ```
 
-5. Build with TF OP support (Flex delegate):
+### 5. Build with Bazel:
+
+#### macOS
+
+Install bazel 3.7.2
 
 ```bash
-cd $MYWORKDIR/tensorflow
-
-# instructions for macOS
-## install bazel 3.7.2
+cd /tmp
 curl -fLO "https://github.com/bazelbuild/bazel/releases/download/3.7.2/bazel-3.7.2-installer-darwin-x86_64.sh"
 chmod +x "bazel-3.7.2-installer-darwin-x86_64.sh"
 ./bazel-3.7.2-installer-darwin-x86_64.sh
+```
 
+```bash
+cd $MYWORKDIR/tensorflow
 brew install swig jpeg zlib
 pip3 install numpy pybind11
 brew install grep
@@ -69,21 +88,25 @@ tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh native
 pip3 install tensorflow/lite/tools/pip_package/gen/tflite_pip/python3/dist/tflite_runtime-2.5.0-cp39-cp39-macosx_11_0_x86_64.whl
 ```
 
+#### Amazon Linux 2
 
-[TODO] Build in a linux docker container and install dependencies:
+Start a container with Amazon Linux 2 + Python 3.8:
 
 ```bash
 cd $MYWORKDIR/tensorflow
-docker run -it -w /tensorflow -v $(pwd):/tensorflow python:3.7.10-buster bash
-# inside docker bash:
-apt-get update
-apt-get install -y swig libjpeg-dev zlib1g-dev python3-dev python3-numpy
-pip install numpy pybind11
-sh tensorflow/lite/tools/make/download_dependencies.sh
-sh tensorflow/lite/tools/pip_package/build_pip_package.sh
-
+docker run -it --entrypoint="" -w /tensorflow -v $(pwd):/tensorflow amazon/aws-lambda-python:3.8 bash
 ```
 
+Continue the build inside the container's bash:
+
+```bash
+yum install -y swig libjpeg-turbo-devel zlib1g-dev
+python3 -m pip install --upgrade pip
+pip3 install numpy pybind11
+sh tensorflow/lite/tools/make/download_dependencies.sh
+tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh native
+pip3 install tensorflow/lite/tools/pip_package/gen/tflite_pip/python3/dist/tflite_runtime-2.5.0-cp39-cp39-macosx_11_0_x86_64.whl
+```
 
 ## Usage
 
