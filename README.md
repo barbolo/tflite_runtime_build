@@ -3,7 +3,10 @@
 ## Install precompiled tflite_runtime
 
 ```bash
-# python 3.9 - x86_64 - tensorflow 2.5.0
+# python 3.8 - linux - x86_64 - tflite_runtime 2.5.0
+pip3 install https://github.com/barbolo/tflite_runtime_build/raw/main/dist/tflite_runtime-2.5.0-cp38-cp38-linux_x86_64.whl
+
+# python 3.9 - maxos - x86_64 - tflite_runtime 2.5.0
 pip3 install https://github.com/barbolo/tflite_runtime_build/raw/main/dist/tflite_runtime-2.5.0-cp39-cp39-macosx_11_0_x86_64.whl
 ```
 
@@ -140,20 +143,15 @@ from time import time
 def evaluate_tflite(path):
   print("Loading:", path)
   start_time = time()
-
   interpreter = Interpreter(model_path=path, num_threads=1)
   interpreter.allocate_tensors()
-
   input_details = interpreter.get_input_details()
   output_details = interpreter.get_output_details()
-
   input_shape = input_details[0]['shape']
-
   for i in range(10):
     input_data = np.array(np.random.random_sample(input_shape), dtype=np.float32)
     interpreter.set_tensor(input_details[0]['index'], input_data)
     interpreter.invoke()
-
   print('100 inferences with {0} ({1} sec)'.format(path, time() - start_time))
 
 evaluate_tflite('foo.tflite')
