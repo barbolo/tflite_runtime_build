@@ -129,7 +129,33 @@ pip3 install tensorflow/lite/tools/pip_package/gen/tflite_pip/python3/dist/tflit
 
 ## Usage
 
+You can run a code like the one below against tflite models `foo.tflite` and `foo_quant.tflite` to
+confirm the `tflite_runtime` is working and to check the models iference latencies.
+
 ```python
 from tflite_runtime.interpreter import Interpreter
-interpreter = Interpreter(model_path="foo.tflite", num_threads=4)
+import numpy as np
+from time import time
+
+def evaluate_tflite(path):
+  print("Loading:", path)
+  start_time = time()
+
+  interpreter = Interpreter(model_path=path, num_threads=1)
+  interpreter.allocate_tensors()
+
+  input_details = interpreter.get_input_details()
+  output_details = interpreter.get_output_details()
+
+  input_shape = input_details[0]['shape']
+
+  for i in range(10):
+    input_data = np.array(np.random.random_sample(input_shape), dtype=np.float32)
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+    interpreter.invoke()
+
+  print('100 inferences with {0} ({1} sec)'.format(path, time() - start_time))
+
+evaluate_tflite('foo.tflite')
+evaluate_tflite('foo_quant.tflite')
 ```
