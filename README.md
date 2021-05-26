@@ -40,19 +40,32 @@ cp $MYWORKDIR/tflite_runtime_build/tensorflow/tools/ci_build/Dockerfile.cpu $MYW
 cp $MYWORKDIR/tflite_runtime_build/tensorflow/tools/ci_build/install/install_deb_packages.sh $MYWORKDIR/tensorflow/tensorflow/tools/ci_build/install/
 ```
 
-4. Build with TF OP support (Flex delegate):
+4. XNNPACK's multi-thread patch
+
+> https://github.com/NobuoTsukamoto/tensorflow/commit/f6f106380ac86ccf61ea9b01395f2911c4a6403c
+
+```bash
+cd $MYWORKDIR/tensorflow
+patch -p1 < $MYWORKDIR/tflite_runtime_build/xnnpack_multi_threads.patch
+cp $MYWORKDIR/tflite_runtime_build/tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh $MYWORKDIR/tensorflow/tensorflow/lite/tools/pip_package/
+```
+
+5. Build with TF OP support (Flex delegate):
 
 ```bash
 cd $MYWORKDIR/tensorflow
 
-# macOS
-brew tap bazelbuild/tap
-brew install bazelbuild/tap/bazel
+# instructions for macOS
+## install bazel 3.7.2
+curl -fLO "https://github.com/bazelbuild/bazel/releases/download/3.7.2/bazel-3.7.2-installer-darwin-x86_64.sh"
+chmod +x "bazel-3.7.2-installer-darwin-x86_64.sh"
+./bazel-3.7.2-installer-darwin-x86_64.sh
+
 brew install swig jpeg zlib
 pip3 install numpy pybind11
 brew install grep
 PATH="/usr/local/opt/grep/libexec/gnubin:$PATH" sh tensorflow/lite/tools/make/download_dependencies.sh
-CUSTOM_BAZEL_FLAGS=--define=tflite_pip_with_flex=true sh tensorflow/lite/tools/pip_package/build_pip_package.sh native
+tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh native
 pip3 install tensorflow/lite/tools/pip_package/gen/tflite_pip/python3/dist/tflite_runtime-2.5.0-cp39-cp39-macosx_11_0_x86_64.whl
 ```
 
@@ -69,4 +82,12 @@ pip install numpy pybind11
 sh tensorflow/lite/tools/make/download_dependencies.sh
 sh tensorflow/lite/tools/pip_package/build_pip_package.sh
 
+```
+
+
+## Usage
+
+```python
+from tflite_runtime.interpreter import Interpreter
+interpreter = Interpreter(model_path="foo.tflite", num_threads=4)
 ```

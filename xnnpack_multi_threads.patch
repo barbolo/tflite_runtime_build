@@ -1,0 +1,319 @@
+From f6f106380ac86ccf61ea9b01395f2911c4a6403c Mon Sep 17 00:00:00 2001
+From: Nobuo Tsukamoto <nextremer.nb.o@gmail.com>
+Date: Sun, 16 May 2021 19:29:34 +0900
+Subject: [PATCH] Allow the thread pool to be modified during the XNNPACK
+ delegate.
+
+---
+ tensorflow/lite/python/interpreter.py         | 26 ++++++++----
+ .../interpreter_wrapper.cc                    | 40 +++++++++++++------
+ .../interpreter_wrapper/interpreter_wrapper.h | 13 +++---
+ .../interpreter_wrapper_pybind11.cc           | 16 ++++----
+ .../build_pip_package_with_bazel.sh           |  7 +++-
+ 5 files changed, 66 insertions(+), 36 deletions(-)
+
+diff --git a/tensorflow/lite/python/interpreter.py b/tensorflow/lite/python/interpreter.py
+index ed4e040b484b7..0f614418170ec 100644
+--- a/tensorflow/lite/python/interpreter.py
++++ b/tensorflow/lite/python/interpreter.py
+@@ -337,6 +337,14 @@ def __init__(self,
+       raise ValueError('Unrecognized passed in op resolver type: {}'.format(
+           experimental_op_resolver_type))
+ 
++    if num_threads is not None:
++      if not isinstance(num_threads, int):
++        raise ValueError('type of num_threads should be int')
++      if num_threads < 1:
++        raise ValueError('num_threads should >= 1')
++    else:
++      num_threads = 0
++
+     if model_path and not model_content:
+       custom_op_registerers_by_name = [
+           x for x in self._custom_op_registerers if isinstance(x, str)
+@@ -348,7 +356,8 @@ def __init__(self,
+           _interpreter_wrapper.CreateWrapperFromFile(
+               model_path, op_resolver_id, custom_op_registerers_by_name,
+               custom_op_registerers_by_func,
+-              experimental_preserve_all_tensors))
++              experimental_preserve_all_tensors,
++              num_threads))
+       if not self._interpreter:
+         raise ValueError('Failed to open {}'.format(model_path))
+     elif model_content and not model_path:
+@@ -366,18 +375,19 @@ def __init__(self,
+           _interpreter_wrapper.CreateWrapperFromBuffer(
+               model_content, op_resolver_id, custom_op_registerers_by_name,
+               custom_op_registerers_by_func,
+-              experimental_preserve_all_tensors))
++              experimental_preserve_all_tensors,
++              num_threads))
+     elif not model_content and not model_path:
+       raise ValueError('`model_path` or `model_content` must be specified.')
+     else:
+       raise ValueError('Can\'t both provide `model_path` and `model_content`')
+ 
+-    if num_threads is not None:
+-      if not isinstance(num_threads, int):
+-        raise ValueError('type of num_threads should be int')
+-      if num_threads < 1:
+-        raise ValueError('num_threads should >= 1')
+-      self._interpreter.SetNumThreads(num_threads)
++    # if num_threads is not None:
++    #   if not isinstance(num_threads, int):
++    #     raise ValueError('type of num_threads should be int')
++    #   if num_threads < 1:
++    #     raise ValueError('num_threads should >= 1')
++    #   self._interpreter.SetNumThreads(num_threads)
+ 
+     # Each delegate is a wrapper that owns the delegates that have been loaded
+     # as plugins. The interpreter wrapper will be using them, but we need to
+diff --git a/tensorflow/lite/python/interpreter_wrapper/interpreter_wrapper.cc b/tensorflow/lite/python/interpreter_wrapper/interpreter_wrapper.cc
+index c2dde41abaa35..69465ebbfa5da 100644
+--- a/tensorflow/lite/python/interpreter_wrapper/interpreter_wrapper.cc
++++ b/tensorflow/lite/python/interpreter_wrapper/interpreter_wrapper.cc
+@@ -73,7 +73,9 @@ using python_utils::PyDecrefDeleter;
+ 
+ std::unique_ptr<Interpreter> CreateInterpreter(
+     const InterpreterWrapper::Model* model,
+-    const tflite::MutableOpResolver& resolver, bool preserve_all_tensors) {
++    const tflite::MutableOpResolver& resolver, bool preserve_all_tensors,
++    const int num_threads
++    ) {
+   if (!model) {
+     return nullptr;
+   }
+@@ -83,8 +85,15 @@ std::unique_ptr<Interpreter> CreateInterpreter(
+   std::unique_ptr<Interpreter> interpreter;
+   InterpreterBuilder builder(*model, resolver);
+   if (preserve_all_tensors) builder.PreserveAllTensorsExperimental();
+-  if (builder(&interpreter) != kTfLiteOk) {
+-    return nullptr;
++  if (num_threads > 0)
++  {
++    if (builder(&interpreter, num_threads) != kTfLiteOk) {
++      return nullptr;
++    }
++  } else {
++    if (builder(&interpreter) != kTfLiteOk) {
++      return nullptr;
++    }
+   }
+   return interpreter;
+ }
+@@ -181,7 +190,8 @@ InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
+     std::unique_ptr<PythonErrorReporter> error_reporter,
+     const std::vector<std::string>& registerers_by_name,
+     const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
+-    std::string* error_msg, bool preserve_all_tensors) {
++    std::string* error_msg, bool preserve_all_tensors,
++    const int num_threads) {
+   if (!model) {
+     *error_msg = error_reporter->message();
+     return nullptr;
+@@ -215,7 +225,7 @@ InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
+     registerer(reinterpret_cast<uintptr_t>(resolver.get()));
+   }
+   auto interpreter =
+-      CreateInterpreter(model.get(), *resolver, preserve_all_tensors);
++      CreateInterpreter(model.get(), *resolver, preserve_all_tensors, num_threads);
+   if (!interpreter) {
+     *error_msg = error_reporter->message();
+     return nullptr;
+@@ -736,30 +746,33 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
+     const char* model_path, int op_resolver_id,
+     const std::vector<std::string>& registerers_by_name,
+     const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
+-    std::string* error_msg, bool preserve_all_tensors) {
++    std::string* error_msg, bool preserve_all_tensors,
++    const int num_threads) {
+   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
+   std::unique_ptr<InterpreterWrapper::Model> model =
+       Model::BuildFromFile(model_path, error_reporter.get());
+   return CreateInterpreterWrapper(std::move(model), op_resolver_id,
+                                   std::move(error_reporter),
+                                   registerers_by_name, registerers_by_func,
+-                                  error_msg, preserve_all_tensors);
++                                  error_msg, preserve_all_tensors,
++                                  num_threads);
+ }
+ 
+ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
+     const char* model_path, int op_resolver_id,
+     const std::vector<std::string>& registerers, std::string* error_msg,
+-    bool preserve_all_tensors) {
++    bool preserve_all_tensors, const int num_threads) {
+   return CreateWrapperCPPFromFile(model_path, op_resolver_id, registerers,
+                                   {} /*registerers_by_func*/, error_msg,
+-                                  preserve_all_tensors);
++                                  preserve_all_tensors, num_threads);
+ }
+ 
+ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
+     PyObject* data, int op_resolver_id,
+     const std::vector<std::string>& registerers_by_name,
+     const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
+-    std::string* error_msg, bool preserve_all_tensors) {
++    std::string* error_msg, bool preserve_all_tensors,
++    const int num_threads) {
+   char* buf = nullptr;
+   Py_ssize_t length;
+   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
+@@ -772,15 +785,16 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
+   return CreateInterpreterWrapper(std::move(model), op_resolver_id,
+                                   std::move(error_reporter),
+                                   registerers_by_name, registerers_by_func,
+-                                  error_msg, preserve_all_tensors);
++                                  error_msg, preserve_all_tensors,
++                                  num_threads);
+ }
+ 
+ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
+     PyObject* data, int op_resolver_id,
+     const std::vector<std::string>& registerers, std::string* error_msg,
+-    bool preserve_all_tensors) {
++    bool preserve_all_tensors, const int num_threads) {
+   return CreateWrapperCPPFromBuffer(data, op_resolver_id, registerers, {},
+-                                    error_msg, preserve_all_tensors);
++                                    error_msg, preserve_all_tensors, num_threads);
+ }
+ 
+ PyObject* InterpreterWrapper::ResetVariableTensors() {
+diff --git a/tensorflow/lite/python/interpreter_wrapper/interpreter_wrapper.h b/tensorflow/lite/python/interpreter_wrapper/interpreter_wrapper.h
+index 88935a4b4daea..ee10b5535ac7f 100644
+--- a/tensorflow/lite/python/interpreter_wrapper/interpreter_wrapper.h
++++ b/tensorflow/lite/python/interpreter_wrapper/interpreter_wrapper.h
+@@ -48,23 +48,25 @@ class InterpreterWrapper {
+   static InterpreterWrapper* CreateWrapperCPPFromFile(
+       const char* model_path, int op_resolver_id,
+       const std::vector<std::string>& registerers, std::string* error_msg,
+-      bool preserve_all_tensors);
++      bool preserve_all_tensors, const int num_threads);
+   static InterpreterWrapper* CreateWrapperCPPFromFile(
+       const char* model_path, int op_resolver_id,
+       const std::vector<std::string>& registerers_by_name,
+       const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
+-      std::string* error_msg, bool preserve_all_tensors);
++      std::string* error_msg, bool preserve_all_tensors,
++      const int num_threads);
+ 
+   // SWIG caller takes ownership of pointer.
+   static InterpreterWrapper* CreateWrapperCPPFromBuffer(
+       PyObject* data, int op_resolver_id,
+       const std::vector<std::string>& registerers, std::string* error_msg,
+-      bool preserve_all_tensors);
++      bool preserve_all_tensors, const int num_thread);
+   static InterpreterWrapper* CreateWrapperCPPFromBuffer(
+       PyObject* data, int op_resolver_id,
+       const std::vector<std::string>& registerers_by_name,
+       const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
+-      std::string* error_msg, bool preserve_all_tensors);
++      std::string* error_msg, bool preserve_all_tensors,
++      const int num_threads);
+ 
+   ~InterpreterWrapper();
+   PyObject* AllocateTensors();
+@@ -121,7 +123,8 @@ class InterpreterWrapper {
+       std::unique_ptr<PythonErrorReporter> error_reporter,
+       const std::vector<std::string>& registerers_by_name,
+       const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
+-      std::string* error_msg, bool preserve_all_tensors);
++      std::string* error_msg, bool preserve_all_tensors,
++      const int num_threads);
+ 
+   InterpreterWrapper(std::unique_ptr<Model> model,
+                      std::unique_ptr<PythonErrorReporter> error_reporter,
+diff --git a/tensorflow/lite/python/interpreter_wrapper/interpreter_wrapper_pybind11.cc b/tensorflow/lite/python/interpreter_wrapper/interpreter_wrapper_pybind11.cc
+index dc31cef20f5fc..d8c6c0d635f71 100644
+--- a/tensorflow/lite/python/interpreter_wrapper/interpreter_wrapper_pybind11.cc
++++ b/tensorflow/lite/python/interpreter_wrapper/interpreter_wrapper_pybind11.cc
+@@ -35,11 +35,11 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
+   m.def("CreateWrapperFromFile",
+         [](const std::string& model_path, int op_resolver_id,
+            const std::vector<std::string>& registerers,
+-           bool preserve_all_tensors) {
++           bool preserve_all_tensors, const int num_threads) {
+           std::string error;
+           auto* wrapper = ::InterpreterWrapper::CreateWrapperCPPFromFile(
+               model_path.c_str(), op_resolver_id, registerers, &error,
+-              preserve_all_tensors);
++              preserve_all_tensors, num_threads);
+           if (!wrapper) {
+             throw std::invalid_argument(error);
+           }
+@@ -50,11 +50,11 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
+       [](const std::string& model_path, int op_resolver_id,
+          const std::vector<std::string>& registerers_by_name,
+          const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
+-         bool preserve_all_tensors) {
++         bool preserve_all_tensors, const int num_threads) {
+         std::string error;
+         auto* wrapper = ::InterpreterWrapper::CreateWrapperCPPFromFile(
+             model_path.c_str(), op_resolver_id, registerers_by_name,
+-            registerers_by_func, &error, preserve_all_tensors);
++            registerers_by_func, &error, preserve_all_tensors, num_threads);
+         if (!wrapper) {
+           throw std::invalid_argument(error);
+         }
+@@ -63,11 +63,11 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
+   m.def("CreateWrapperFromBuffer",
+         [](const py::bytes& data, int op_resolver_id,
+            const std::vector<std::string>& registerers,
+-           bool preserve_all_tensors) {
++           bool preserve_all_tensors, const int num_threads) {
+           std::string error;
+           auto* wrapper = ::InterpreterWrapper::CreateWrapperCPPFromBuffer(
+               data.ptr(), op_resolver_id, registerers, &error,
+-              preserve_all_tensors);
++              preserve_all_tensors, num_threads);
+           if (!wrapper) {
+             throw std::invalid_argument(error);
+           }
+@@ -78,11 +78,11 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
+       [](const py::bytes& data, int op_resolver_id,
+          const std::vector<std::string>& registerers_by_name,
+          const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
+-         bool preserve_all_tensors) {
++         bool preserve_all_tensors, const int num_threads) {
+         std::string error;
+         auto* wrapper = ::InterpreterWrapper::CreateWrapperCPPFromBuffer(
+             data.ptr(), op_resolver_id, registerers_by_name,
+-            registerers_by_func, &error, preserve_all_tensors);
++            registerers_by_func, &error, preserve_all_tensors, num_threads);
+         if (!wrapper) {
+           throw std::invalid_argument(error);
+         }
+diff --git a/tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh b/tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh
+index 9e46c39109f06..895ecc9a5c8e3 100755
+--- a/tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh
++++ b/tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh
+@@ -41,6 +41,7 @@ if [ ! -z "${CI_BUILD_HOME}" ] && [ `pwd` = "/workspace" ]; then
+ fi
+ 
+ # Build source tree.
++# See details: https://github.com/tensorflow/tensorflow/pull/49199
+ rm -rf "${BUILD_DIR}" && mkdir -p "${BUILD_DIR}/tflite_runtime"
+ cp -r "${TENSORFLOW_LITE_DIR}/tools/pip_package/debian" \
+       "${TENSORFLOW_LITE_DIR}/tools/pip_package/setup_with_binary.py" \
+@@ -48,6 +49,8 @@ cp -r "${TENSORFLOW_LITE_DIR}/tools/pip_package/debian" \
+       "${TENSORFLOW_LITE_DIR}/python/interpreter_wrapper" \
+       "${BUILD_DIR}"
+ cp "${TENSORFLOW_LITE_DIR}/python/interpreter.py" \
++   "${TENSORFLOW_LITE_DIR}/python/metrics_interface.py" \
++   "${TENSORFLOW_LITE_DIR}/python/metrics_portable.py" \
+    "${BUILD_DIR}/tflite_runtime"
+ echo "__version__ = '${PACKAGE_VERSION}'" >> "${BUILD_DIR}/tflite_runtime/__init__.py"
+ echo "__git_version__ = '$(git -C "${TENSORFLOW_DIR}" describe)'" >> "${BUILD_DIR}/tflite_runtime/__init__.py"
+@@ -68,10 +71,10 @@ case "${TENSORFLOW_TARGET}" in
+       --copt=-O3"
+     ;;
+   native)
+-    BAZEL_FLAGS="--copt=-O3 --copt=-march=native"
++    BAZEL_FLAGS="--copt=-O3 --copt=-march=native --define=tflite_with_xnnpack=true"
+     ;;
+   *)
+-    BAZEL_FLAGS="--copt=-O3"
++    BAZEL_FLAGS="--copt=-O3 --define=tflite_with_xnnpack=true"
+     ;;
+ esac
+ 
