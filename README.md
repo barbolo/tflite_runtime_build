@@ -4,7 +4,7 @@
 
 ```bash
 # python 3.9 - x86_64 - tensorflow 2.5.0
-pip install https://raw.githubusercontent.com/barbolo/tflite_runtime_build/main/dist/tflite_runtime-2.5.0-cp39-cp39-macosx_11_0_x86_64.whl
+pip3 install https://github.com/barbolo/tflite_runtime_build/raw/main/dist/tflite_runtime-2.5.0-cp39-cp39-macosx_11_0_x86_64.whl
 ```
 
 ## Instructions to build
@@ -12,8 +12,11 @@ pip install https://raw.githubusercontent.com/barbolo/tflite_runtime_build/main/
 Use these instructions to build `tflite_runtime` with:
 
 - Custom Ops from MediaPipe (`MaxPoolingWithArgmax2D`, `MaxUnpooling2D` and `Convolution2DTransposeBias`);
-- TF OP support (Flex delegate);
 - `XNNPACK` with multi-thread support.
+
+If you need Flex delegate, edit the file `tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh` and change
+`tflite_pip_with_flex=false` with `tflite_pip_with_flex=true`. This will increase the size of the final binary (from
+~ 5MB to ~ 380MB).
 
 > Based on:
 > - https://github.com/tensorflow/tensorflow/tree/v2.5.0/tensorflow/lite/tools/pip_package
@@ -69,7 +72,7 @@ cp $MYWORKDIR/tflite_runtime_build/tensorflow/lite/tools/pip_package/build_pip_p
 
 #### macOS
 
-Install bazel 3.7.2
+Install bazel 3.7.2:
 
 ```bash
 cd /tmp
@@ -84,6 +87,8 @@ brew install swig jpeg zlib
 pip3 install numpy pybind11
 brew install grep
 PATH="/usr/local/opt/grep/libexec/gnubin:$PATH" sh tensorflow/lite/tools/make/download_dependencies.sh
+export PYTHON_BIN_PATH=/usr/local/bin/python3
+bazel clean
 tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh native
 pip3 install tensorflow/lite/tools/pip_package/gen/tflite_pip/python3/dist/tflite_runtime-2.5.0-cp39-cp39-macosx_11_0_x86_64.whl
 ```
@@ -99,13 +104,27 @@ docker run -it --entrypoint="" -w /tensorflow -v $(pwd):/tensorflow amazon/aws-l
 
 Continue the build inside the container's bash:
 
+Install bazel 3.7.2:
+
+```bash
+yum install -y zip unzip which tar gzip git-core gcc gcc-c++ perl
+cd /tmp
+curl -fLO "https://github.com/bazelbuild/bazel/releases/download/3.7.2/bazel-3.7.2-installer-linux-x86_64.sh"
+chmod +x "bazel-3.7.2-installer-linux-x86_64.sh"
+./bazel-3.7.2-installer-linux-x86_64.sh
+wget https://github.com/bazelbuild/bazel/releases/download/0.4.4/bazel-0.4.4-jdk7-installer-linux-x86_64.sh
+```
+
 ```bash
 yum install -y swig libjpeg-turbo-devel zlib1g-dev
 python3 -m pip install --upgrade pip
-pip3 install numpy pybind11
+pip3 install numpy pybind11 wheel
 sh tensorflow/lite/tools/make/download_dependencies.sh
+export PYTHON_BIN_PATH=/var/lang/bin/python3.8
+export BAZEL_FLAGS="--config=avx2_linux --config=mkl"
+bazel clean
 tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh native
-pip3 install tensorflow/lite/tools/pip_package/gen/tflite_pip/python3/dist/tflite_runtime-2.5.0-cp39-cp39-macosx_11_0_x86_64.whl
+pip3 install tensorflow/lite/tools/pip_package/gen/tflite_pip/python3/dist/tflite_runtime-2.5.0-cp38-cp38-linux_x86_64.whl
 ```
 
 ## Usage
