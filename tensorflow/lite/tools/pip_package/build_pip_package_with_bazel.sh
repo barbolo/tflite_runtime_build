@@ -63,26 +63,18 @@ case "${TENSORFLOW_TARGET}" in
       --copt=-march=armv7-a --copt=-mfpu=neon-vfpv4
       --copt=-O3 --copt=-fno-tree-pre --copt=-fpermissive
       --define tensorflow_mkldnn_contraction_kernel=0
-      --define=raspberry_pi_with_neon=true
-      --define=tflite_pip_with_flex=false
-      --define=tflite_with_xnnpack=true"
+      --define=raspberry_pi_with_neon=true"
     ;;
   aarch64)
     BAZEL_FLAGS="--config=elinux_aarch64
       --define tensorflow_mkldnn_contraction_kernel=0
-      --define=tflite_pip_with_flex=false
-      --define=tflite_with_xnnpack=true
       --copt=-O3"
     ;;
   native)
-    BAZEL_FLAGS="--copt=-O3 --copt=-march=native
-      --define=tflite_pip_with_flex=false
-      --define=tflite_with_xnnpack=true"
+    BAZEL_FLAGS="--copt=-O3 --copt=-march=native"
     ;;
   *)
-    BAZEL_FLAGS="--copt=-O3
-      --define=tflite_pip_with_flex=false
-      --define=tflite_with_xnnpack=true"
+    BAZEL_FLAGS="--copt=-O3"
     ;;
 esac
 

@@ -17,9 +17,12 @@ Use these instructions to build `tflite_runtime` with:
 - Custom Ops from MediaPipe (`MaxPoolingWithArgmax2D`, `MaxUnpooling2D` and `Convolution2DTransposeBias`);
 - `XNNPACK` with multi-thread support.
 
-If you need Flex delegate, edit the file `tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh` and change
-`tflite_pip_with_flex=false` with `tflite_pip_with_flex=true`. This will increase the size of the final binary (from
-~ 5MB to ~ 380MB).
+> For `tflite_runtime` 2.5.0 you should quantize your model to `float16`, since `integer` operations are still not
+> supported by `XNNPACK`. If you quantize to `int8` your model will run slower than `float16` or `float32` in desktop
+> CPUs.
+
+> If you need **Flex delegate**, set `CUSTOM_BAZEL_FLAGS="--define=tflite_pip_with_flex=true"` in step 6. This will
+> increase the size of the final `tflite_runtime` binary (from ~ 5MB to ~ 380MB).
 
 > Based on:
 > - https://github.com/tensorflow/tensorflow/tree/v2.5.0/tensorflow/lite/tools/pip_package
@@ -40,7 +43,7 @@ git clone -b v2.5.0 https://github.com/tensorflow/tensorflow.git
 git clone https://github.com/barbolo/tflite_runtime_build.git
 ```
 
-2. Include mediapipe custom operations:
+### 3. Include mediapipe custom operations:
 
 ```bash
 cp $MYWORKDIR/tflite_runtime_build/mediapipe/util/tflite/operations/max_pool_argmax.cc $MYWORKDIR/tensorflow/tensorflow/lite/kernels
@@ -54,14 +57,14 @@ cp $MYWORKDIR/tflite_runtime_build/tensorflow/lite/kernels/register_ref.cc $MYWO
 cp $MYWORKDIR/tflite_runtime_build/tensorflow/lite/kernels/BUILD $MYWORKDIR/tensorflow/tensorflow/lite/kernels
 ```
 
-### 3. Update build tools:
+### 4. Update build tools:
 
 ```bash
 cp $MYWORKDIR/tflite_runtime_build/tensorflow/tools/ci_build/Dockerfile.cpu $MYWORKDIR/tensorflow/tensorflow/tools/ci_build/
 cp $MYWORKDIR/tflite_runtime_build/tensorflow/tools/ci_build/install/install_deb_packages.sh $MYWORKDIR/tensorflow/tensorflow/tools/ci_build/install/
 ```
 
-### 4. XNNPACK's multi-thread patch
+### 5. XNNPACK's multi-thread patch
 
 > https://github.com/NobuoTsukamoto/tensorflow/commit/f6f106380ac86ccf61ea9b01395f2911c4a6403c
 
@@ -71,7 +74,7 @@ patch -p1 < $MYWORKDIR/tflite_runtime_build/xnnpack_multi_threads.patch
 cp $MYWORKDIR/tflite_runtime_build/tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh $MYWORKDIR/tensorflow/tensorflow/lite/tools/pip_package/
 ```
 
-### 5. Build with Bazel:
+### 6. Build with Bazel:
 
 #### macOS
 
@@ -90,9 +93,10 @@ brew install swig jpeg zlib
 pip3 install numpy pybind11
 brew install grep
 PATH="/usr/local/opt/grep/libexec/gnubin:$PATH" sh tensorflow/lite/tools/make/download_dependencies.sh
-export PYTHON_BIN_PATH=/usr/local/bin/python3
 bazel clean
-tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh native
+PYTHON_BIN_PATH=/usr/local/bin/python3 \
+  CUSTOM_BAZEL_FLAGS="--define=tflite_with_xnnpack=true" \
+  tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh native
 pip3 install tensorflow/lite/tools/pip_package/gen/tflite_pip/python3/dist/tflite_runtime-2.5.0-cp39-cp39-macosx_11_0_x86_64.whl
 ```
 
@@ -123,17 +127,17 @@ yum install -y swig libjpeg-turbo-devel zlib1g-dev
 python3 -m pip install --upgrade pip
 pip3 install numpy pybind11 wheel
 sh tensorflow/lite/tools/make/download_dependencies.sh
-export PYTHON_BIN_PATH=/var/lang/bin/python3.8
-export BAZEL_FLAGS="--config=avx2_linux --config=mkl"
 bazel clean
-tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh native
+PYTHON_BIN_PATH=/var/lang/bin/python3.8 \
+  CUSTOM_BAZEL_FLAGS="--config=avx2_linux --config=mkl --define=tflite_with_xnnpack=true" \
+  tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh native
 pip3 install tensorflow/lite/tools/pip_package/gen/tflite_pip/python3/dist/tflite_runtime-2.5.0-cp38-cp38-linux_x86_64.whl
 ```
 
 ## Usage
 
 You can run a code like the one below against tflite models `foo.tflite` and `foo_quant.tflite` to
-confirm the `tflite_runtime` is working and to check the models iference latencies.
+confirm the `tflite_runtime` is working and to check their inferences latencies.
 
 ```python
 from tflite_runtime.interpreter import Interpreter
