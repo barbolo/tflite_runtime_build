@@ -119,13 +119,13 @@ cd /tmp
 curl -fLO "https://github.com/bazelbuild/bazel/releases/download/3.7.2/bazel-3.7.2-installer-linux-x86_64.sh"
 chmod +x "bazel-3.7.2-installer-linux-x86_64.sh"
 ./bazel-3.7.2-installer-linux-x86_64.sh
-wget https://github.com/bazelbuild/bazel/releases/download/0.4.4/bazel-0.4.4-jdk7-installer-linux-x86_64.sh
 ```
 
 ```bash
 yum install -y swig libjpeg-turbo-devel zlib1g-dev
 python3 -m pip install --upgrade pip
 pip3 install numpy pybind11 wheel
+cd /tensorflow
 sh tensorflow/lite/tools/make/download_dependencies.sh
 bazel clean
 PYTHON_BIN_PATH=/var/lang/bin/python3.8 \
