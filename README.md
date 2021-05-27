@@ -90,7 +90,7 @@ chmod +x "bazel-3.7.2-installer-darwin-x86_64.sh"
 ```bash
 cd $MYWORKDIR/tensorflow
 brew install swig jpeg zlib
-pip3 install numpy pybind11
+pip3 install numpy~=1.19.2 pybind11
 brew install grep
 PATH="/usr/local/opt/grep/libexec/gnubin:$PATH" sh tensorflow/lite/tools/make/download_dependencies.sh
 bazel clean
@@ -122,13 +122,13 @@ chmod +x "bazel-3.7.2-installer-linux-x86_64.sh"
 ```
 
 ```bash
+cd /tensorflow
 yum install -y swig libjpeg-turbo-devel zlib1g-dev
 python3 -m pip install --upgrade pip
-pip3 install numpy pybind11 wheel
-cd /tensorflow
+pip3 install numpy~=1.19.2 pybind11 wheel
 sh tensorflow/lite/tools/make/download_dependencies.sh
 bazel clean
-PYTHON_BIN_PATH=/var/lang/bin/python3.8 \
+PYTHON_BIN_PATH=/var/lang/bin/python3 \
   CUSTOM_BAZEL_FLAGS="--config=avx2_linux --config=mkl --define=tflite_with_xnnpack=true" \
   tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh native
 pip3 install tensorflow/lite/tools/pip_package/gen/tflite_pip/python3/dist/tflite_runtime-2.5.0-cp38-cp38-linux_x86_64.whl
