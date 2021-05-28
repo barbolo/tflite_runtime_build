@@ -6,7 +6,7 @@
 # python 3.8 - linux - x86_64 - tflite_runtime 2.5.0
 pip3 install https://github.com/barbolo/tflite_runtime_build/raw/main/dist/tflite_runtime-2.5.0-cp38-cp38-linux_x86_64.whl
 
-# python 3.9 - maxos - x86_64 - tflite_runtime 2.5.0
+# python 3.9 - macosx - x86_64 - tflite_runtime 2.5.0
 pip3 install https://github.com/barbolo/tflite_runtime_build/raw/main/dist/tflite_runtime-2.5.0-cp39-cp39-macosx_11_0_x86_64.whl
 ```
 
@@ -21,11 +21,9 @@ Use these instructions to build `tflite_runtime` with:
 > supported by `XNNPACK`. If you quantize to `int8` your model will run slower than `float16` or `float32` in desktop
 > CPUs.
 
-> If you need **Flex delegate**, set `CUSTOM_BAZEL_FLAGS="--define=tflite_pip_with_flex=true"` in step 6. This will
-> increase the size of the final `tflite_runtime` binary (from ~ 5MB to ~ 380MB).
-
 > Based on:
 > - https://github.com/tensorflow/tensorflow/tree/v2.5.0/tensorflow/lite/tools/pip_package
+> - https://www.tensorflow.org/lite/guide/reduce_binary_size?hl=en
 > - https://zenn.dev/pinto0309/articles/a0e40c2817f2ee
 > - https://github.com/PINTO0309/TensorflowLite-bin
 
@@ -75,6 +73,9 @@ cp $MYWORKDIR/tflite_runtime_build/tensorflow/lite/tools/pip_package/build_pip_p
 ```
 
 ### 6. Build with Bazel:
+
+> If you need **Flex delegate**, set `CUSTOM_BAZEL_FLAGS="--define=tflite_pip_with_flex=true"` This will increase the
+> size of the final `tflite_runtime` binary (from ~ 5MB to ~ 380MB).
 
 #### macOS
 
@@ -160,4 +161,35 @@ def evaluate_tflite(path):
 
 evaluate_tflite('foo.tflite')
 evaluate_tflite('foo_quant.tflite')
+```
+
+## Build with Flex delegate and with selective registration of kernels
+
+**WIP - binary file is still large**
+
+> Learn more reading the comments in:
+> - `$MYWORKDIR/tensorflow/tensorflow/core/framework/selective_registration.h`.
+> - `$MYWORKDIR/tensorflow/tensorflow/python/tools/print_selective_registration_header.py`.
+
+Find out which ops should be included based on your model `foo.tflite`:
+
+```bash
+bazel build tensorflow/lite/tools:list_flex_ops_no_kernel_main
+./bazel-bin/tensorflow/lite/tools/list_flex_ops_no_kernel_main --graphs=foo.tflite > foo.ops_list
+```
+
+Generate `ops_to_register.h`:
+
+```bash
+bazel build tensorflow/python/tools:print_selective_registration_header
+./bazel-bin/tensorflow/python/tools/print_selective_registration_header --graphs=foo.ops_list --proto_fileformat=ops_list > ops_to_register.h
+cp ops_to_register.h $MYWORKDIR/tensorflow/tensorflow/core/framework/
+```
+
+Build with selective registration of kernels:
+
+```bash
+PYTHON_BIN_PATH=/usr/local/bin/python3 \
+  CUSTOM_BAZEL_FLAGS="--define=tflite_with_xnnpack=true --define=tflite_pip_with_flex=true --copt=-DSELECTIVE_REGISTRATION --copt=-DSUPPORT_SELECTIVE_REGISTRATION" \
+  tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh native
 ```
