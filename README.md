@@ -3,6 +3,9 @@
 ## Install precompiled tflite_runtime
 
 ```bash
+# python 3.6 - linux - x86_64 - tflite_runtime 2.6.0 + Flex delegate
+pip3 install https://github.com/barbolo/tflite_runtime_build/raw/main/dist/tflite_runtime-2.6.0-cp36-cp36m-linux_x86_64.whl
+
 # python 3.8 - linux - x86_64 - tflite_runtime 2.5.0
 pip3 install https://github.com/barbolo/tflite_runtime_build/raw/main/dist/tflite_runtime-2.5.0-cp38-cp38-linux_x86_64.whl
 
