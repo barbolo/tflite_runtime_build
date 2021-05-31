@@ -41,7 +41,7 @@ git clone -b v2.5.0 https://github.com/tensorflow/tensorflow.git
 git clone --depth=1 https://github.com/barbolo/tflite_runtime_build.git
 ```
 
-### 3. Include mediapipe custom operations:
+### [Optional] 3. Include mediapipe custom operations:
 
 ```bash
 cp $MYWORKDIR/tflite_runtime_build/mediapipe/util/tflite/operations/max_pool_argmax.cc $MYWORKDIR/tensorflow/tensorflow/lite/kernels
