@@ -118,7 +118,7 @@ Continue the build inside the container's bash:
 Install bazel 3.7.2:
 
 ```bash
-yum install -y zip unzip which tar gzip git-core gcc gcc-c++ perl
+yum install -y zip unzip which tar gzip git-core gcc gcc-c++ perl perl-Data-Dumper
 cd /tmp
 curl -fLO "https://github.com/bazelbuild/bazel/releases/download/3.7.2/bazel-3.7.2-installer-linux-x86_64.sh"
 chmod +x "bazel-3.7.2-installer-linux-x86_64.sh"
