@@ -38,7 +38,7 @@ export MYWORKDIR=~/git/github
 ```bash
 cd $MYWORKDIR
 git clone -b v2.5.0 https://github.com/tensorflow/tensorflow.git
-git clone https://github.com/barbolo/tflite_runtime_build.git
+git clone --depth=1 https://github.com/barbolo/tflite_runtime_build.git
 ```
 
 ### 3. Include mediapipe custom operations:
